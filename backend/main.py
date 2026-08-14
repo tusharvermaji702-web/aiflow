@@ -6,6 +6,9 @@ from models import Tool, Base
 from pydantic import BaseModel
 from typing import Optional
 
+from auth import hash_password, verify_password, create_token
+from models import User
+
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="AIFlow API")
@@ -48,3 +51,33 @@ def delete_tool(tool_id: int, db: Session = Depends(get_db)):
     db.delete(tool)
     db.commit()
     return {"message": "Deleted"}
+class UserRegister(BaseModel):
+    email: str
+    username: str
+    password: str
+
+class UserLogin(BaseModel):
+    email: str
+    password: str
+
+@app.post("/auth/register")
+def register(user: UserRegister, db: Session = Depends(get_db)):
+    existing = db.query(User).filter(User.email == user.email).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    new_user = User(
+        email=user.email,
+        username=user.username,
+        hashed_password=hash_password(user.password)
+    )
+    db.add(new_user)
+    db.commit()
+    return {"message": "User created successfully"}
+
+@app.post("/auth/login")
+def login(user: UserLogin, db: Session = Depends(get_db)):
+    db_user = db.query(User).filter(User.email == user.email).first()
+    if not db_user or not verify_password(user.password, db_user.hashed_password):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    token = create_token({"sub": db_user.email})
+    return {"access_token": token, "token_type": "bearer"}
