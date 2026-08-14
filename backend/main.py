@@ -1,63 +1,50 @@
-"""
-AIFlow Backend - Month 1 Foundation
-A minimal FastAPI app that proves the backend is alive and can talk to the frontend.
-As the roadmap progresses, this file will split into routers (tools, categories,
-workflows, auth, etc.) under an `app/` package - see README for the planned structure.
-"""
-
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import Session
+from database import get_db, engine
+from models import Tool, Base
 from pydantic import BaseModel
+from typing import Optional
 
-app = FastAPI(
-    title="AIFlow API",
-    description="Backend for AIFlow - AI tool discovery and workflow automation platform",
-    version="0.1.0",
-)
+Base.metadata.create_all(bind=engine)
 
-# Allow the local Next.js dev server to call this API.
-# Tighten this list before deploying anywhere public.
+app = FastAPI(title="AIFlow API")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000"],
-    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-
-class HealthResponse(BaseModel):
-    status: str
-    message: str
-
-
-class Tool(BaseModel):
-    id: int
+class ToolCreate(BaseModel):
     name: str
-    category: str
     description: str
+    category: str
+    rating: Optional[float] = 0.0
+    website: Optional[str] = ""
 
+@app.get("/health")
+def health():
+    return {"status": "AIFlow backend is running."}
 
-# Mock data for now - Month 3 replaces this with a real Postgres-backed table.
-MOCK_TOOLS = [
-    Tool(id=1, name="Whisper", category="Audio", description="Speech to text transcription."),
-    Tool(id=2, name="GPT-4", category="Text", description="General purpose language model."),
-    Tool(id=3, name="Stable Diffusion", category="Image", description="Text to image generation."),
-]
+@app.get("/tools")
+def get_tools(db: Session = Depends(get_db)):
+    return db.query(Tool).all()
 
+@app.post("/tools")
+def create_tool(tool: ToolCreate, db: Session = Depends(get_db)):
+    db_tool = Tool(**tool.dict())
+    db.add(db_tool)
+    db.commit()
+    db.refresh(db_tool)
+    return db_tool
 
-@app.get("/health", response_model=HealthResponse)
-def health_check():
-    """Simple endpoint so the frontend (and you) can confirm the backend is running."""
-    return HealthResponse(status="ok", message="AIFlow backend is running.")
-
-
-@app.get("/tools", response_model=list[Tool])
-def list_tools():
-    """Returns mock AI tools. This is the seed for the real AI Directory (Month 3+)."""
-    return MOCK_TOOLS
-
-
-@app.get("/")
-def root():
-    return {"message": "Welcome to the AIFlow API. Visit /docs for interactive API docs."}
+@app.delete("/tools/{tool_id}")
+def delete_tool(tool_id: int, db: Session = Depends(get_db)):
+    tool = db.query(Tool).filter(Tool.id == tool_id).first()
+    if not tool:
+        raise HTTPException(status_code=404, detail="Tool not found")
+    db.delete(tool)
+    db.commit()
+    return {"message": "Deleted"}
