@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
+import "./globals.css";
+import Navbar from "@/components/Navbar";
+import Footer from "@/components/Footer";
 
 export const metadata: Metadata = {
-  title: "AIFlow",
-  description: "Discover AI tools and turn goals into executable AI workflows.",
+  title: "AIFlow — Discover AI tools. Turn goals into workflows.",
+  description: "Discover AI tools and turn natural-language goals into executable AI workflows.",
 };
 
 export default function RootLayout({
@@ -12,8 +15,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body style={{ fontFamily: "system-ui, sans-serif", margin: 0 }}>
+      <body>
+        <Navbar />
         {children}
+        <Footer />
       </body>
     </html>
   );
