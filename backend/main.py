@@ -7,7 +7,7 @@ from typing import Optional
 from pydantic import BaseModel
 
 from database import get_db, engine, Base
-from models import Tool, User
+from models import Tool, User, SavedItem
 from auth import hash_password, verify_password, create_token, decode_token
 
 Base.metadata.create_all(bind=engine)
@@ -104,6 +104,22 @@ class UserOut(BaseModel):
     id: int
     email: str
     username: str
+
+    class Config:
+        from_attributes = True
+
+
+class SavedItemCreate(BaseModel):
+    item_type: str  # "tool" | "workflow"
+    item_slug: str
+    item_name: str
+
+
+class SavedItemOut(BaseModel):
+    id: int
+    item_type: str
+    item_slug: str
+    item_name: str
 
     class Config:
         from_attributes = True
@@ -263,6 +279,73 @@ def login(user: UserLogin, db: Session = Depends(get_db)):
 @app.get("/auth/me", response_model=UserOut)
 def read_current_user(current_user: User = Depends(get_current_user)):
     return current_user
+
+
+# ---------- saved items (tools & workflows) ----------
+
+@app.get("/saved", response_model=list[SavedItemOut])
+def list_saved_items(
+    item_type: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    query = db.query(SavedItem).filter(SavedItem.user_id == current_user.id)
+    if item_type:
+        query = query.filter(SavedItem.item_type == item_type)
+    return query.order_by(SavedItem.created_at.desc()).all()
+
+
+@app.post("/saved", response_model=SavedItemOut, status_code=201)
+def save_item(
+    payload: SavedItemCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    existing = (
+        db.query(SavedItem)
+        .filter(
+            SavedItem.user_id == current_user.id,
+            SavedItem.item_type == payload.item_type,
+            SavedItem.item_slug == payload.item_slug,
+        )
+        .first()
+    )
+    if existing:
+        raise HTTPException(status_code=400, detail="Already saved")
+
+    item = SavedItem(
+        user_id=current_user.id,
+        item_type=payload.item_type,
+        item_slug=payload.item_slug,
+        item_name=payload.item_name,
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+@app.delete("/saved/{item_type}/{item_slug}")
+def unsave_item(
+    item_type: str,
+    item_slug: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    item = (
+        db.query(SavedItem)
+        .filter(
+            SavedItem.user_id == current_user.id,
+            SavedItem.item_type == item_type,
+            SavedItem.item_slug == item_slug,
+        )
+        .first()
+    )
+    if not item:
+        raise HTTPException(status_code=404, detail="Not saved")
+    db.delete(item)
+    db.commit()
+    return {"message": "Removed"}
 
 
 @app.get("/")

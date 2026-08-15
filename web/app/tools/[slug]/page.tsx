@@ -2,16 +2,24 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { fetchTool, fetchTools, ApiTool } from "@/lib/api";
+import { fetchSavedItems, saveItem, unsaveItem } from "@/lib/saved";
+import { useAuth } from "@/lib/AuthContext";
 
 export default function ToolDetailPage() {
   const params = useParams<{ slug: string }>();
+  const router = useRouter();
+  const { user, token } = useAuth();
+
   const [tool, setTool] = useState<ApiTool | null>(null);
   const [alternatives, setAlternatives] = useState<ApiTool[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [saved, setSaved] = useState(false);
+  const [saveBusy, setSaveBusy] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -35,6 +43,38 @@ export default function ToolDetailPage() {
       })
       .finally(() => setLoading(false));
   }, [params.slug]);
+
+  // Check saved status once we know the tool and whether the user is logged in.
+  useEffect(() => {
+    if (!token || !tool) return;
+    fetchSavedItems(token, "tool")
+      .then((items) => setSaved(items.some((i) => i.item_slug === tool.slug)))
+      .catch(() => {
+        /* non-critical - button just won't reflect saved state */
+      });
+  }, [token, tool]);
+
+  async function handleSaveToggle() {
+    if (!tool) return;
+    if (!user || !token) {
+      router.push("/login");
+      return;
+    }
+    setSaveBusy(true);
+    try {
+      if (saved) {
+        await unsaveItem(token, "tool", tool.slug);
+        setSaved(false);
+      } else {
+        await saveItem(token, { item_type: "tool", item_slug: tool.slug, item_name: tool.name });
+        setSaved(true);
+      }
+    } catch {
+      /* silently ignore - worst case the button state doesn't flip */
+    } finally {
+      setSaveBusy(false);
+    }
+  }
 
   return (
     <main className="section">
@@ -112,8 +152,16 @@ export default function ToolDetailPage() {
             )}
 
             <div style={{ marginTop: 40, display: "flex", gap: 10 }}>
-              <button className="btn btn-primary">Save tool</button>
-              <button className="btn btn-secondary">Use in a workflow</button>
+              <button
+                onClick={handleSaveToggle}
+                disabled={saveBusy}
+                className={saved ? "btn btn-secondary" : "btn btn-primary"}
+              >
+                {saved ? "✓ Saved" : "Save tool"}
+              </button>
+              <Link href="/workflows" className="btn btn-secondary">
+                Use in a workflow
+              </Link>
             </div>
           </>
         )}

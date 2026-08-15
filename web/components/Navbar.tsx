@@ -67,6 +67,9 @@ export default function Navbar() {
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
           {loading ? null : user ? (
             <>
+              <Link href="/saved" style={{ fontSize: 14, color: "var(--ink-soft)" }}>
+                Saved
+              </Link>
               <span style={{ fontSize: 14, color: "var(--ink-soft)" }}>
                 Hi, {user.username}
               </span>

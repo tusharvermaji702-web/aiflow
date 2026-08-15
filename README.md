@@ -19,6 +19,7 @@ aiflow/
 - ✅ **Month 3** — Real database (SQLAlchemy models, full CRUD, frontend connected to live data)
 - ✅ **Month 4** — Authentication (register/login/me wired end-to-end, token persisted, Navbar reflects login state)
 - ✅ **Month 5** — Search & filtering (live text search, category filter, and sort on Tools; live search on Explore)
+- ✅ **Month 6** — Saved tools & workflows (save/unsave buttons, `/saved` library page, tied to real user accounts)
 
 ## Running it locally
 
@@ -72,10 +73,14 @@ sure the backend is running on port 8000.
 | POST   | `/auth/register`  | Create a user account, returns a token + user  |
 | POST   | `/auth/login`     | Log in, returns a token + user                 |
 | GET    | `/auth/me`        | Get the current user (requires Bearer token)  |
+| GET    | `/saved`          | List current user's saved items (requires auth, optional `?item_type=`) |
+| POST   | `/saved`          | Save a tool or workflow (requires auth)        |
+| DELETE | `/saved/{type}/{slug}` | Remove a saved item (requires auth)      |
 
 ## What's next (per the roadmap)
 
-- **Month 6** — user accounts & saved workflows (save a tool, save a workflow, view saved items).
+- **Month 7** — the AI Toolkit: real AI-powered utilities (grammar improver,
+  PDF summarizer, etc.) instead of directory entries only.
 
 See the full master documentation for the complete 12-month plan, the AI
 Toolkit, Workflow Engine, AI Router, and launch checklist.

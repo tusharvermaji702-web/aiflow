@@ -9,8 +9,8 @@ backend/*.pyc
 backend/.venv/
 backend/venv/
 backend/.env
+backend/*.db
 
 # OS / editor
 .DS_Store
 .vscode/
-backend/*.db
