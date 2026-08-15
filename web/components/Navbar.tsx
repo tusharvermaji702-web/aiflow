@@ -1,4 +1,8 @@
+"use client";
+
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/lib/AuthContext";
 
 const LINKS = [
   { href: "/explore", label: "Explore" },
@@ -10,6 +14,14 @@ const LINKS = [
 ];
 
 export default function Navbar() {
+  const { user, loading, logOut } = useAuth();
+  const router = useRouter();
+
+  function handleLogOut() {
+    logOut();
+    router.push("/");
+  }
+
   return (
     <header
       style={{
@@ -52,13 +64,26 @@ export default function Navbar() {
           ))}
         </nav>
 
-        <div style={{ display: "flex", gap: 10 }}>
-          <Link href="/login" className="btn btn-secondary">
-            Log in
-          </Link>
-          <Link href="/signup" className="btn btn-primary">
-            Sign up
-          </Link>
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          {loading ? null : user ? (
+            <>
+              <span style={{ fontSize: 14, color: "var(--ink-soft)" }}>
+                Hi, {user.username}
+              </span>
+              <button onClick={handleLogOut} className="btn btn-secondary">
+                Log out
+              </button>
+            </>
+          ) : (
+            <>
+              <Link href="/login" className="btn btn-secondary">
+                Log in
+              </Link>
+              <Link href="/signup" className="btn btn-primary">
+                Sign up
+              </Link>
+            </>
+          )}
         </div>
       </div>
     </header>

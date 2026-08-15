@@ -13,3 +13,4 @@ backend/.env
 # OS / editor
 .DS_Store
 .vscode/
+backend/*.db

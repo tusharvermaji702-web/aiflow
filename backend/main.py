@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import Optional
@@ -7,11 +8,13 @@ from pydantic import BaseModel
 
 from database import get_db, engine, Base
 from models import Tool, User
-from auth import hash_password, verify_password, create_token
+from auth import hash_password, verify_password, create_token, decode_token
 
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="AIFlow API", version="0.3.0")
+app = FastAPI(title="AIFlow API", version="0.4.0")
+
+bearer_scheme = HTTPBearer(auto_error=False)
 
 app.add_middleware(
     CORSMiddleware,
@@ -95,6 +98,30 @@ class UserRegister(BaseModel):
 class UserLogin(BaseModel):
     email: str
     password: str
+
+
+class UserOut(BaseModel):
+    id: int
+    email: str
+    username: str
+
+    class Config:
+        from_attributes = True
+
+
+def get_current_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
+    db: Session = Depends(get_db),
+) -> User:
+    if credentials is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    payload = decode_token(credentials.credentials)
+    if payload is None or "sub" not in payload:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    user = db.query(User).filter(User.email == payload["sub"]).first()
+    if user is None:
+        raise HTTPException(status_code=401, detail="User no longer exists")
+    return user
 
 
 # ---------- health ----------
@@ -211,7 +238,13 @@ def register(user: UserRegister, db: Session = Depends(get_db)):
     )
     db.add(new_user)
     db.commit()
-    return {"message": "User created successfully"}
+    db.refresh(new_user)
+    token = create_token({"sub": new_user.email})
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "user": UserOut.from_orm(new_user),
+    }
 
 
 @app.post("/auth/login")
@@ -220,7 +253,16 @@ def login(user: UserLogin, db: Session = Depends(get_db)):
     if not db_user or not verify_password(user.password, db_user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     token = create_token({"sub": db_user.email})
-    return {"access_token": token, "token_type": "bearer"}
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "user": UserOut.from_orm(db_user),
+    }
+
+
+@app.get("/auth/me", response_model=UserOut)
+def read_current_user(current_user: User = Depends(get_current_user)):
+    return current_user
 
 
 @app.get("/")

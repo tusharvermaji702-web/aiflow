@@ -2,30 +2,43 @@
 
 import { useState } from "react";
 import ToolCard from "@/components/ToolCard";
-import { TOOLS } from "@/lib/mock-data";
+import { fetchTools, ApiTool } from "@/lib/api";
 
 const EXAMPLES = [
-  "I need to create realistic product images for my online store.",
-  "Turn my research papers into a presentation.",
-  "I have messy meeting audio and need clean action items.",
+  "product images",
+  "research papers",
+  "meeting audio",
+  "grammar",
 ];
 
 export default function ExplorePage() {
   const [query, setQuery] = useState("");
+  const [results, setResults] = useState<ApiTool[]>([]);
   const [searched, setSearched] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  function handleSearch(q: string) {
+  async function handleSearch(q: string) {
     setQuery(q);
-    setSearched(q.trim().length > 0);
-  }
+    const trimmed = q.trim();
+    if (!trimmed) {
+      setSearched(false);
+      setResults([]);
+      return;
+    }
 
-  // Simple mock relevance match against tags/description - real matching
-  // arrives with the AI Router in a later phase of the roadmap.
-  const results = searched
-    ? TOOLS.filter((t) =>
-        (t.name + t.description + t.tags.join(" ")).toLowerCase().includes(query.toLowerCase().split(" ")[0] ?? "")
-      )
-    : [];
+    setSearched(true);
+    setLoading(true);
+    setError(null);
+    try {
+      const tools = await fetchTools({ q: trimmed });
+      setResults(tools);
+    } catch {
+      setError("Could not reach the backend. Is it running on :8000?");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
     <main className="section">
@@ -33,8 +46,8 @@ export default function ExplorePage() {
         <p className="eyebrow">AI Search</p>
         <h1 style={{ fontSize: 32, marginTop: 8 }}>Describe what you want to accomplish</h1>
         <p className="lede" style={{ marginTop: 8 }}>
-          Skip the keyword search. Tell AIFlow your goal in plain language and it will
-          identify the intent, the output you need, and which tools can get you there.
+          Search across every tool's name, tagline, and description — or try a keyword
+          below. Full intent-based matching arrives with the AI Router later in the roadmap.
         </p>
 
         <form
@@ -46,8 +59,11 @@ export default function ExplorePage() {
         >
           <input
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="e.g. I need to turn a podcast into blog posts"
+            onChange={(e) => {
+              setQuery(e.target.value);
+              handleSearch(e.target.value);
+            }}
+            placeholder="e.g. transcription, summarizer, image generation"
             style={{
               flex: 1,
               minWidth: 260,
@@ -56,7 +72,7 @@ export default function ExplorePage() {
               border: "1px solid var(--line)",
               fontSize: 15,
             }}
-            aria-label="Describe your goal"
+            aria-label="Search tools"
           />
           <button type="submit" className="btn btn-primary">
             Search
@@ -79,15 +95,25 @@ export default function ExplorePage() {
         <div style={{ marginTop: 40 }}>
           {!searched && (
             <p style={{ color: "var(--ink-faint)" }}>
-              Results will appear here once you search — try one of the examples above.
+              Results will appear here as you type — try one of the examples above.
             </p>
           )}
 
-          {searched && results.length === 0 && (
+          {searched && loading && (
+            <p style={{ color: "var(--ink-faint)" }}>Searching…</p>
+          )}
+
+          {searched && !loading && error && (
+            <div className="card" style={{ borderColor: "#e5b5b5" }}>
+              <p style={{ fontWeight: 600 }}>{error}</p>
+            </div>
+          )}
+
+          {searched && !loading && !error && results.length === 0 && (
             <div className="card">
               <p style={{ fontWeight: 600 }}>No matching tools yet.</p>
               <p style={{ color: "var(--ink-soft)", marginTop: 6, fontSize: 14 }}>
-                AIFlow&apos;s tool directory is still growing. Try browsing the{" "}
+                Try a different keyword, or browse the{" "}
                 <a href="/tools" style={{ color: "var(--accent-dark)", fontWeight: 600 }}>
                   full tools list
                 </a>{" "}
@@ -96,7 +122,7 @@ export default function ExplorePage() {
             </div>
           )}
 
-          {searched && results.length > 0 && (
+          {searched && !loading && !error && results.length > 0 && (
             <>
               <p style={{ fontSize: 14, color: "var(--ink-faint)", marginBottom: 16 }}>
                 {results.length} tool{results.length > 1 ? "s" : ""} matched

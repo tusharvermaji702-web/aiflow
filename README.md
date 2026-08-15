@@ -5,9 +5,6 @@ goals into executable AI workflows.
 
 > "Tell AIFlow what you want to accomplish, and it figures out the best way to do it."
 
-This repo is the **Month 1 foundation** from the AIFlow project roadmap:
-a Next.js frontend and a FastAPI backend that can talk to each other.
-
 ```
 aiflow/
 ├── web/       # Next.js (TypeScript) frontend
@@ -15,11 +12,13 @@ aiflow/
 └── README.md
 ```
 
-## Milestone: Month 1
+## Status
 
-Get `web/` and `backend/` running locally, with the frontend page pulling
-live data from the backend API. That's it — no database, no auth, no AI
-calls yet. Everything after this builds on top of that connection.
+- ✅ **Month 1** — Frontend/backend foundation
+- ✅ **Month 2** — Full UI with design system (10 pages)
+- ✅ **Month 3** — Real database (SQLAlchemy models, full CRUD, frontend connected to live data)
+- ✅ **Month 4** — Authentication (register/login/me wired end-to-end, token persisted, Navbar reflects login state)
+- ✅ **Month 5** — Search & filtering (live text search, category filter, and sort on Tools; live search on Explore)
 
 ## Running it locally
 
@@ -31,11 +30,18 @@ python -m venv venv
 source venv/bin/activate      # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 cp .env.example .env
+python seed_data.py           # populates the database with starter tools
 uvicorn main:app --reload --port 8000
 ```
 
-Visit `http://localhost:8000/docs` — you should see the interactive API docs,
-with `/health` and `/tools` endpoints.
+By default this uses a local SQLite file (`aiflow.db`) so it runs without
+installing Postgres. To use real Postgres, set `DATABASE_URL` in `.env`:
+
+```
+DATABASE_URL=postgresql://username:password@localhost:5432/aiflow
+```
+
+Visit `http://localhost:8000/docs` for interactive API docs.
 
 ### 2. Frontend (Next.js)
 
@@ -48,19 +54,28 @@ cp .env.local.example .env.local
 npm run dev
 ```
 
-Visit `http://localhost:3000` — the page should show "Backend status: AIFlow
-backend is running." and list the mock tools. If it shows a connection error,
-double check the backend is running on port 8000.
+Visit `http://localhost:3000` — Tools, Categories, and Tool detail pages now
+pull live data from the backend. If a page shows a connection error, make
+sure the backend is running on port 8000.
+
+## API reference (current)
+
+| Method | Path              | Description                                  |
+|--------|-------------------|-----------------------------------------------|
+| GET    | `/health`         | Health check                                  |
+| GET    | `/tools`          | List tools — supports `?category=` and `?q=`  |
+| GET    | `/tools/{slug}`   | Get one tool                                  |
+| POST   | `/tools`          | Create a tool                                 |
+| PUT    | `/tools/{slug}`   | Update a tool                                 |
+| DELETE | `/tools/{slug}`   | Delete a tool                                 |
+| GET    | `/categories`     | Categories with live tool counts              |
+| POST   | `/auth/register`  | Create a user account, returns a token + user  |
+| POST   | `/auth/login`     | Log in, returns a token + user                 |
+| GET    | `/auth/me`        | Get the current user (requires Bearer token)  |
 
 ## What's next (per the roadmap)
 
-- **Month 2** — build out the full public-facing UI (Home, Explore, Tools,
-  Categories, Tool details, Workflows, About, Pricing, Login, Signup) using
-  mock data.
-- **Month 3** — add PostgreSQL and real CRUD endpoints for `tools`,
-  `categories`, `tags`, `reviews`, `favorites`; replace mock data with a real
-  database.
-- **Month 4** — authentication.
+- **Month 6** — user accounts & saved workflows (save a tool, save a workflow, view saved items).
 
 See the full master documentation for the complete 12-month plan, the AI
 Toolkit, Workflow Engine, AI Router, and launch checklist.
@@ -71,3 +86,5 @@ Toolkit, Workflow Engine, AI Router, and launch checklist.
   update `backend/main.py` when you deploy anywhere.
 - Never commit `.env` or `.env.local` — only the `.example` versions are
   tracked in git.
+- `SECRET_KEY` in `.env` should be set to a real random string before any
+  real deployment — there's a dev-only fallback so it still runs without one.
