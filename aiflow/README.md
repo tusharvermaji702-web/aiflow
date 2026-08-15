@@ -1,0 +1,93 @@
+# AIFlow
+
+AI-powered platform that helps users discover AI tools and turn natural-language
+goals into executable AI workflows.
+
+> "Tell AIFlow what you want to accomplish, and it figures out the best way to do it."
+
+```
+aiflow/
+├── web/       # Next.js (TypeScript) frontend
+├── backend/   # FastAPI backend
+└── README.md
+```
+
+## Status
+
+- ✅ **Month 1** — Frontend/backend foundation
+- ✅ **Month 2** — Full UI with design system (10 pages)
+- ✅ **Month 3** — Real database (SQLAlchemy models, full CRUD, frontend connected to live data)
+- 🔜 **Month 4** — Authentication endpoints exist (register/login) but aren't wired into the frontend yet
+- 🔜 **Month 5** — Basic search/filter query params exist on `/tools`, but no dedicated UI yet
+
+## Running it locally
+
+### 1. Backend (FastAPI)
+
+```bash
+cd backend
+python -m venv venv
+source venv/bin/activate      # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+cp .env.example .env
+python seed_data.py           # populates the database with starter tools
+uvicorn main:app --reload --port 8000
+```
+
+By default this uses a local SQLite file (`aiflow.db`) so it runs without
+installing Postgres. To use real Postgres, set `DATABASE_URL` in `.env`:
+
+```
+DATABASE_URL=postgresql://username:password@localhost:5432/aiflow
+```
+
+Visit `http://localhost:8000/docs` for interactive API docs.
+
+### 2. Frontend (Next.js)
+
+In a second terminal:
+
+```bash
+cd web
+npm install
+cp .env.local.example .env.local
+npm run dev
+```
+
+Visit `http://localhost:3000` — Tools, Categories, and Tool detail pages now
+pull live data from the backend. If a page shows a connection error, make
+sure the backend is running on port 8000.
+
+## API reference (current)
+
+| Method | Path              | Description                                  |
+|--------|-------------------|-----------------------------------------------|
+| GET    | `/health`         | Health check                                  |
+| GET    | `/tools`          | List tools — supports `?category=` and `?q=`  |
+| GET    | `/tools/{slug}`   | Get one tool                                  |
+| POST   | `/tools`          | Create a tool                                 |
+| PUT    | `/tools/{slug}`   | Update a tool                                 |
+| DELETE | `/tools/{slug}`   | Delete a tool                                 |
+| GET    | `/categories`     | Categories with live tool counts              |
+| POST   | `/auth/register`  | Create a user account                         |
+| POST   | `/auth/login`     | Log in, returns a JWT                         |
+
+## What's next (per the roadmap)
+
+- **Finish Month 4** — wire the Login/Signup forms to `/auth/login` and
+  `/auth/register`, store the token, and gate protected actions.
+- **Finish Month 5** — build a real search/filter UI on top of the
+  `?category=` and `?q=` params `/tools` already supports.
+- **Month 6** — user accounts & saved workflows.
+
+See the full master documentation for the complete 12-month plan, the AI
+Toolkit, Workflow Engine, AI Router, and launch checklist.
+
+## Notes
+
+- CORS on the backend is currently locked to `http://localhost:3000` —
+  update `backend/main.py` when you deploy anywhere.
+- Never commit `.env` or `.env.local` — only the `.example` versions are
+  tracked in git.
+- `SECRET_KEY` in `.env` should be set to a real random string before any
+  real deployment — there's a dev-only fallback so it still runs without one.
