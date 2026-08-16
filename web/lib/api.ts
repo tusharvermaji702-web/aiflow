@@ -20,6 +20,13 @@ export type ApiCategory = {
   count: number;
 };
 
+export type ShortLink = {
+  slug: string;
+  target_url: string;
+  clicks: number;
+  short_url: string;
+};
+
 async function request<T>(path: string): Promise<T> {
   const res = await fetch(`${API_URL}${path}`);
   if (!res.ok) {
@@ -44,41 +51,19 @@ export function fetchCategories(): Promise<ApiCategory[]> {
   return request<ApiCategory[]>("/categories");
 }
 
-export async function runToolkit(
-  endpoint: "grammar" | "summarize" | "explain-code",
-  text: string
-): Promise<string> {
-  const res = await fetch(`${API_URL}/toolkit/${endpoint}`, {
+export async function createShortLink(targetUrl: string, customSlug?: string): Promise<ShortLink> {
+  const res = await fetch(`${API_URL}/links`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text }),
+    body: JSON.stringify({ target_url: targetUrl, slug: customSlug || undefined }),
   });
-
   const data = await res.json().catch(() => ({}));
-
   if (!res.ok) {
-    const detail = typeof data.detail === "string" ? data.detail : "Something went wrong.";
-    throw new Error(detail);
+    throw new Error(data.detail || "Couldn't create that short link.");
   }
-
-  return data.result as string;
+  return data as ShortLink;
 }
 
-export type WorkflowStepResult = { title: string; output: string };
-
-export async function runWorkflow(slug: string, text: string): Promise<WorkflowStepResult[]> {
-  const res = await fetch(`${API_URL}/workflows/${slug}/run`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text }),
-  });
-
-  const data = await res.json().catch(() => ({}));
-
-  if (!res.ok) {
-    const detail = typeof data.detail === "string" ? data.detail : "Something went wrong.";
-    throw new Error(detail);
-  }
-
-  return data.steps as WorkflowStepResult[];
+export function fetchShortLinkStats(slug: string): Promise<ShortLink> {
+  return request<ShortLink>(`/links/${slug}`);
 }

@@ -1,5 +1,9 @@
-from fastapi import FastAPI, Depends, HTTPException
+import random
+import string
+
+from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -7,21 +11,12 @@ from typing import Optional
 from pydantic import BaseModel
 
 from database import get_db, engine, Base
-from models import Tool, User, SavedItem
+from models import Tool, User, ShortLink
 from auth import hash_password, verify_password, create_token, decode_token
-from ai_toolkit import (
-    improve_grammar,
-    summarize_text,
-    explain_code,
-    extract_key_concepts,
-    generate_flashcards,
-    generate_quiz,
-    ToolkitUpstreamError,
-)
 
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="AIFlow API", version="0.4.0")
+app = FastAPI(title="AIFlow API", version="0.5.0")
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -118,37 +113,16 @@ class UserOut(BaseModel):
         from_attributes = True
 
 
-class SavedItemCreate(BaseModel):
-    item_type: str  # "tool" | "workflow"
-    item_slug: str
-    item_name: str
+class ShortLinkCreate(BaseModel):
+    target_url: str
+    slug: Optional[str] = None
 
 
-class SavedItemOut(BaseModel):
-    id: int
-    item_type: str
-    item_slug: str
-    item_name: str
-
-    class Config:
-        from_attributes = True
-
-
-class ToolkitTextRequest(BaseModel):
-    text: str
-
-
-class ToolkitResponse(BaseModel):
-    result: str
-
-
-class WorkflowStepResult(BaseModel):
-    title: str
-    output: str
-
-
-class WorkflowRunResponse(BaseModel):
-    steps: list[WorkflowStepResult]
+class ShortLinkOut(BaseModel):
+    slug: str
+    target_url: str
+    clicks: int
+    short_url: str
 
 
 def get_current_user(
@@ -181,9 +155,6 @@ def list_tools(
     q: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
-    """List tools, optionally filtered by category and/or a text search
-    across name/tagline/description. This is the foundation Month 5's
-    search & filtering will build on."""
     query = db.query(Tool)
     if category and category.lower() != "all":
         query = query.filter(func.lower(Tool.category) == category.lower())
@@ -307,129 +278,57 @@ def read_current_user(current_user: User = Depends(get_current_user)):
     return current_user
 
 
-# ---------- saved items (tools & workflows) ----------
+# ---------- URL shortener ----------
 
-@app.get("/saved", response_model=list[SavedItemOut])
-def list_saved_items(
-    item_type: Optional[str] = None,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    query = db.query(SavedItem).filter(SavedItem.user_id == current_user.id)
-    if item_type:
-        query = query.filter(SavedItem.item_type == item_type)
-    return query.order_by(SavedItem.created_at.desc()).all()
+def generate_slug(length: int = 6) -> str:
+    alphabet = string.ascii_letters + string.digits
+    return "".join(random.choice(alphabet) for _ in range(length))
 
 
-@app.post("/saved", response_model=SavedItemOut, status_code=201)
-def save_item(
-    payload: SavedItemCreate,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    existing = (
-        db.query(SavedItem)
-        .filter(
-            SavedItem.user_id == current_user.id,
-            SavedItem.item_type == payload.item_type,
-            SavedItem.item_slug == payload.item_slug,
-        )
-        .first()
-    )
-    if existing:
-        raise HTTPException(status_code=400, detail="Already saved")
+@app.post("/links", response_model=ShortLinkOut, status_code=201)
+def create_short_link(payload: ShortLinkCreate, request: Request, db: Session = Depends(get_db)):
+    if not payload.target_url.startswith(("http://", "https://")):
+        raise HTTPException(status_code=400, detail="URL must start with http:// or https://")
 
-    item = SavedItem(
-        user_id=current_user.id,
-        item_type=payload.item_type,
-        item_slug=payload.item_slug,
-        item_name=payload.item_name,
-    )
-    db.add(item)
+    slug = payload.slug.strip() if payload.slug else None
+    if slug:
+        if not slug.replace("-", "").replace("_", "").isalnum():
+            raise HTTPException(status_code=400, detail="Custom slugs can only contain letters, numbers, - and _")
+        if db.query(ShortLink).filter(ShortLink.slug == slug).first():
+            raise HTTPException(status_code=400, detail="That custom slug is already taken")
+    else:
+        slug = generate_slug()
+        while db.query(ShortLink).filter(ShortLink.slug == slug).first():
+            slug = generate_slug()
+
+    link = ShortLink(slug=slug, target_url=payload.target_url, clicks=0)
+    db.add(link)
     db.commit()
-    db.refresh(item)
-    return item
+    db.refresh(link)
+
+    base_url = str(request.base_url).rstrip("/")
+    return ShortLinkOut(slug=link.slug, target_url=link.target_url, clicks=link.clicks, short_url=f"{base_url}/s/{link.slug}")
 
 
-@app.delete("/saved/{item_type}/{item_slug}")
-def unsave_item(
-    item_type: str,
-    item_slug: str,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    item = (
-        db.query(SavedItem)
-        .filter(
-            SavedItem.user_id == current_user.id,
-            SavedItem.item_type == item_type,
-            SavedItem.item_slug == item_slug,
-        )
-        .first()
-    )
-    if not item:
-        raise HTTPException(status_code=404, detail="Not saved")
-    db.delete(item)
+@app.get("/links/{slug}", response_model=ShortLinkOut)
+def get_short_link_stats(slug: str, request: Request, db: Session = Depends(get_db)):
+    link = db.query(ShortLink).filter(ShortLink.slug == slug).first()
+    if not link:
+        raise HTTPException(status_code=404, detail="Short link not found")
+    base_url = str(request.base_url).rstrip("/")
+    return ShortLinkOut(slug=link.slug, target_url=link.target_url, clicks=link.clicks, short_url=f"{base_url}/s/{link.slug}")
+
+
+@app.get("/s/{slug}")
+def redirect_short_link(slug: str, db: Session = Depends(get_db)):
+    link = db.query(ShortLink).filter(ShortLink.slug == slug).first()
+    if not link:
+        raise HTTPException(status_code=404, detail="Short link not found")
+    link.clicks += 1
     db.commit()
-    return {"message": "Removed"}
+    return RedirectResponse(url=link.target_url, status_code=307)
 
 
 @app.get("/")
 def root():
     return {"message": "Welcome to the AIFlow API. Visit /docs for interactive API docs."}
-
-
-# ---------- AI toolkit (real AI-powered utilities) ----------
-
-def run_toolkit_call(fn, text: str) -> ToolkitResponse:
-    if not text or not text.strip():
-        raise HTTPException(status_code=400, detail="Text is required")
-    try:
-        result = fn(text)
-    except ToolkitUpstreamError as e:
-        raise HTTPException(status_code=e.status_code, detail=str(e))
-    return ToolkitResponse(result=result)
-
-
-@app.post("/toolkit/grammar", response_model=ToolkitResponse)
-def toolkit_grammar(payload: ToolkitTextRequest):
-    return run_toolkit_call(improve_grammar, payload.text)
-
-
-@app.post("/toolkit/summarize", response_model=ToolkitResponse)
-def toolkit_summarize(payload: ToolkitTextRequest):
-    return run_toolkit_call(summarize_text, payload.text)
-
-
-@app.post("/toolkit/explain-code", response_model=ToolkitResponse)
-def toolkit_explain_code(payload: ToolkitTextRequest):
-    return run_toolkit_call(explain_code, payload.text)
-
-
-# ---------- workflow engine ----------
-# Only "lecture-to-quiz" is wired up to actually run right now, since it's
-# the only workflow whose input (pasted notes) doesn't require a feature
-# we haven't built yet (audio transcription, video processing, PDF parsing).
-# The others still preview their pipeline on /workflows.
-
-@app.post("/workflows/lecture-to-quiz/run", response_model=WorkflowRunResponse)
-def run_lecture_to_quiz(payload: ToolkitTextRequest):
-    if not payload.text or not payload.text.strip():
-        raise HTTPException(status_code=400, detail="Notes text is required")
-
-    try:
-        summary = summarize_text(payload.text)
-        concepts = extract_key_concepts(payload.text)
-        flashcards = generate_flashcards(payload.text)
-        quiz = generate_quiz(payload.text)
-    except ToolkitUpstreamError as e:
-        raise HTTPException(status_code=e.status_code, detail=str(e))
-
-    return WorkflowRunResponse(
-        steps=[
-            WorkflowStepResult(title="Summary / Notes", output=summary),
-            WorkflowStepResult(title="Key Concepts", output=concepts),
-            WorkflowStepResult(title="Flashcards", output=flashcards),
-            WorkflowStepResult(title="20-Question Quiz", output=quiz),
-        ]
-    )

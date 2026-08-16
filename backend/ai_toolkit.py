@@ -10,6 +10,8 @@ Get a key at https://console.anthropic.com to switch on real AI output.
 """
 
 import os
+import json
+import re
 import httpx
 from dotenv import load_dotenv
 
@@ -217,3 +219,106 @@ def generate_quiz(text: str) -> str:
         user_message=text,
         max_tokens=1500,
     )
+
+
+# ---------- AI Router ----------
+# Given a plain-language goal, decides which tools to recommend, whether
+# the runnable "lecture-to-quiz" workflow fits, and which toolkit steps
+# (if any) would help — instead of the user picking a workflow by hand.
+
+TOOLKIT_STEP_NAMES = {"grammar", "summarize", "explain-code"}
+
+
+def _contains_any(text: str, phrases: list[str]) -> bool:
+    """Word-boundary match so e.g. 'script' doesn't false-match inside 'descriptions'."""
+    return any(re.search(r"\b" + re.escape(p) + r"\b", text) for p in phrases)
+
+
+def _mock_route(goal: str, tools: list[dict]) -> dict:
+    goal_lower = goal.lower()
+
+    toolkit_steps = []
+    if _contains_any(goal_lower, ["grammar", "proofread", "fix my writing", "correct my"]):
+        toolkit_steps.append("grammar")
+    if _contains_any(goal_lower, ["summarize", "summarise", "summary", "tl;dr", "condense"]):
+        toolkit_steps.append("summarize")
+    if _contains_any(goal_lower, ["code", "debug", "function", "script"]):
+        toolkit_steps.append("explain-code")
+
+    suggested_workflow = None
+    if _contains_any(goal_lower, ["lecture", "notes", "quiz", "flashcard", "study"]):
+        suggested_workflow = "lecture-to-quiz"
+
+    words = [w for w in re.findall(r"[a-z]+", goal_lower) if len(w) > 3]
+    recommended_slugs = []
+    for tool in tools:
+        haystack = f"{tool['name']} {tool['category']} {tool['tagline']}".lower()
+        if any(re.search(r"\b" + re.escape(w) + r"\b", haystack) for w in words):
+            recommended_slugs.append(tool["slug"])
+        if len(recommended_slugs) >= 4:
+            break
+
+    return {
+        "message": (
+            "Demo routing (no AI key configured) — matched based on keywords in your goal. "
+            "Set ANTHROPIC_API_KEY in backend/.env for real intent-based routing."
+        ),
+        "recommended_tool_slugs": recommended_slugs,
+        "suggested_workflow_slug": suggested_workflow,
+        "toolkit_steps": toolkit_steps,
+    }
+
+
+def route_goal(goal: str, tools: list[dict]) -> dict:
+    if not ANTHROPIC_API_KEY:
+        return _mock_route(goal, tools)
+
+    tool_list_text = "\n".join(
+        f"- {t['slug']}: {t['name']} ({t['category']}) — {t['tagline']}" for t in tools
+    )
+    system = (
+        "You are AIFlow's AI Router. Given a user's goal, a list of available directory "
+        "tools, and AIFlow's own built-in capabilities, decide the best plan.\n\n"
+        "AIFlow's built-in toolkit steps (run directly, not directory links): "
+        "'grammar' (fixes grammar/phrasing), 'summarize' (summarizes text), "
+        "'explain-code' (explains a code snippet).\n\n"
+        "AIFlow's one runnable workflow: 'lecture-to-quiz' — turns pasted notes into "
+        "a summary, key concepts, flashcards, and a quiz, in one run.\n\n"
+        "Respond with ONLY valid JSON (no markdown fences, no commentary), exactly these keys:\n"
+        '{"message": "one or two sentence explanation of the plan for the user", '
+        '"recommended_tool_slugs": ["slug", ...] (0-4 slugs from the provided tool list that '
+        "genuinely fit, or [] if none fit), "
+        '"suggested_workflow_slug": "lecture-to-quiz" or null (only if it genuinely fits), '
+        '"toolkit_steps": ["grammar"|"summarize"|"explain-code", ...] (0+ steps, in the order '
+        "they should run, only if genuinely useful for this goal)}"
+    )
+    user_message = f"Goal: {goal}\n\nAvailable directory tools:\n{tool_list_text}"
+
+    raw = call_claude(system, user_message, max_tokens=500)
+
+    cleaned = raw.strip()
+    if cleaned.startswith("```"):
+        cleaned = cleaned.strip("`")
+        if "\n" in cleaned:
+            cleaned = cleaned.split("\n", 1)[1]
+
+    try:
+        data = json.loads(cleaned)
+    except (json.JSONDecodeError, ValueError):
+        return _mock_route(goal, tools)
+
+    valid_slugs = {t["slug"] for t in tools}
+    return {
+        "message": str(data.get("message") or "Here's a plan for your goal."),
+        "recommended_tool_slugs": [
+            s for s in (data.get("recommended_tool_slugs") or []) if s in valid_slugs
+        ][:4],
+        "suggested_workflow_slug": (
+            data.get("suggested_workflow_slug")
+            if data.get("suggested_workflow_slug") == "lecture-to-quiz"
+            else None
+        ),
+        "toolkit_steps": [
+            s for s in (data.get("toolkit_steps") or []) if s in TOOLKIT_STEP_NAMES
+        ],
+    }

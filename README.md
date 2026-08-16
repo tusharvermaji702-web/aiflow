@@ -22,6 +22,7 @@ aiflow/
 - ✅ **Month 6** — Saved tools & workflows (save/unsave buttons, `/saved` library page, tied to real user accounts)
 - ✅ **Month 7** — AI Toolkit: real AI-powered utilities (Grammar Improver, Text Summarizer, Code Explainer) at `/toolkit`. Works out of the box in demo mode (clearly-labeled mock output); set `ANTHROPIC_API_KEY` to switch on real AI output
 - ✅ **Month 8** — Workflow Engine: `/workflows/lecture-to-quiz` actually runs end-to-end (notes → summary → key concepts → flashcards → quiz, 4 chained AI calls). The other 4 workflows still preview their pipeline — they need audio/video/PDF input handling that isn't built yet
+- ✅ **Month 9** — AI Router: `/explore` now takes a plain-language goal and returns a real plan — matching directory tools, the lecture-to-quiz workflow if it fits, and relevant toolkit steps. Works in keyword-matching demo mode by default; real intent-based routing when `ANTHROPIC_API_KEY` is set
 
 ## Running it locally
 
@@ -82,13 +83,12 @@ sure the backend is running on port 8000.
 | POST   | `/toolkit/summarize` | Summarize `{text}` into notes              |
 | POST   | `/toolkit/explain-code` | Explain a code snippet in `{text}`       |
 | POST   | `/workflows/lecture-to-quiz/run` | Runs the full notes→quiz pipeline on `{text}`, returns 4 chained step results |
+| POST   | `/router/plan` | Given `{goal}`, returns recommended tools, a suggested workflow (if it fits), and useful toolkit steps |
 
 ## What's next (per the roadmap)
 
-- **Month 9** — the AI Router: given a plain-language goal, automatically
-  pick and chain the right tools instead of the user choosing a workflow
-  by hand.
 - Wiring up the remaining 4 workflows once audio/video/PDF input handling exists.
+- Deployment: getting the app hosted somewhere real instead of localhost.
 
 See the full master documentation for the complete 12-month plan, the AI
 Toolkit, Workflow Engine, AI Router, and launch checklist.

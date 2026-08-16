@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, Text, ForeignKey, DateTime
+from sqlalchemy import Column, Integer, String, Float, Text, DateTime
 from sqlalchemy.sql import func
 from database import Base
 
@@ -29,15 +29,11 @@ class User(Base):
     hashed_password = Column(String)
 
 
-class SavedItem(Base):
-    """A tool or workflow a user has saved. Workflows are still mock data
-    (see web/lib/mock-data.ts), so we store their slug/name directly rather
-    than a foreign key — that'll change once workflows get their own table."""
-    __tablename__ = "saved_items"
+class ShortLink(Base):
+    __tablename__ = "short_links"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), index=True)
-    item_type = Column(String, index=True)  # "tool" | "workflow"
-    item_slug = Column(String, index=True)
-    item_name = Column(String)
+    slug = Column(String, unique=True, index=True)
+    target_url = Column(Text)
+    clicks = Column(Integer, default=0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
