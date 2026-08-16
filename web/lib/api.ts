@@ -43,3 +43,42 @@ export function fetchTool(slug: string): Promise<ApiTool> {
 export function fetchCategories(): Promise<ApiCategory[]> {
   return request<ApiCategory[]>("/categories");
 }
+
+export async function runToolkit(
+  endpoint: "grammar" | "summarize" | "explain-code",
+  text: string
+): Promise<string> {
+  const res = await fetch(`${API_URL}/toolkit/${endpoint}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    const detail = typeof data.detail === "string" ? data.detail : "Something went wrong.";
+    throw new Error(detail);
+  }
+
+  return data.result as string;
+}
+
+export type WorkflowStepResult = { title: string; output: string };
+
+export async function runWorkflow(slug: string, text: string): Promise<WorkflowStepResult[]> {
+  const res = await fetch(`${API_URL}/workflows/${slug}/run`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    const detail = typeof data.detail === "string" ? data.detail : "Something went wrong.";
+    throw new Error(detail);
+  }
+
+  return data.steps as WorkflowStepResult[];
+}

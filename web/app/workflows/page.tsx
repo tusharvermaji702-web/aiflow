@@ -1,11 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Pipeline from "@/components/Pipeline";
 import { WORKFLOWS } from "@/lib/mock-data";
 import { fetchSavedItems, saveItem, unsaveItem } from "@/lib/saved";
 import { useAuth } from "@/lib/AuthContext";
+
+const RUNNABLE_SLUGS = new Set(["lecture-to-quiz"]);
 
 export default function WorkflowsPage() {
   const router = useRouter();
@@ -75,8 +78,21 @@ export default function WorkflowsPage() {
                 <div style={{ marginTop: 16, overflowX: "auto" }}>
                   <Pipeline steps={wf.steps} />
                 </div>
-                <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
-                  <button className="btn btn-primary">Run this workflow</button>
+                <div style={{ display: "flex", gap: 10, marginTop: 18, alignItems: "center", flexWrap: "wrap" }}>
+                  {RUNNABLE_SLUGS.has(wf.slug) ? (
+                    <Link href={`/workflows/${wf.slug}`} className="btn btn-primary">
+                      Run this workflow
+                    </Link>
+                  ) : (
+                    <>
+                      <button className="btn btn-secondary" disabled>
+                        Run this workflow
+                      </button>
+                      <span style={{ fontSize: 12, color: "var(--ink-faint)" }}>
+                        Coming soon — needs {wf.steps[0].toLowerCase()} support
+                      </span>
+                    </>
+                  )}
                   <button
                     onClick={() => toggleSave(wf.slug, wf.title)}
                     disabled={busySlug === wf.slug}

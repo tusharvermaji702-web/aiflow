@@ -9,6 +9,15 @@ from pydantic import BaseModel
 from database import get_db, engine, Base
 from models import Tool, User, SavedItem
 from auth import hash_password, verify_password, create_token, decode_token
+from ai_toolkit import (
+    improve_grammar,
+    summarize_text,
+    explain_code,
+    extract_key_concepts,
+    generate_flashcards,
+    generate_quiz,
+    ToolkitUpstreamError,
+)
 
 Base.metadata.create_all(bind=engine)
 
@@ -123,6 +132,23 @@ class SavedItemOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class ToolkitTextRequest(BaseModel):
+    text: str
+
+
+class ToolkitResponse(BaseModel):
+    result: str
+
+
+class WorkflowStepResult(BaseModel):
+    title: str
+    output: str
+
+
+class WorkflowRunResponse(BaseModel):
+    steps: list[WorkflowStepResult]
 
 
 def get_current_user(
@@ -351,3 +377,59 @@ def unsave_item(
 @app.get("/")
 def root():
     return {"message": "Welcome to the AIFlow API. Visit /docs for interactive API docs."}
+
+
+# ---------- AI toolkit (real AI-powered utilities) ----------
+
+def run_toolkit_call(fn, text: str) -> ToolkitResponse:
+    if not text or not text.strip():
+        raise HTTPException(status_code=400, detail="Text is required")
+    try:
+        result = fn(text)
+    except ToolkitUpstreamError as e:
+        raise HTTPException(status_code=e.status_code, detail=str(e))
+    return ToolkitResponse(result=result)
+
+
+@app.post("/toolkit/grammar", response_model=ToolkitResponse)
+def toolkit_grammar(payload: ToolkitTextRequest):
+    return run_toolkit_call(improve_grammar, payload.text)
+
+
+@app.post("/toolkit/summarize", response_model=ToolkitResponse)
+def toolkit_summarize(payload: ToolkitTextRequest):
+    return run_toolkit_call(summarize_text, payload.text)
+
+
+@app.post("/toolkit/explain-code", response_model=ToolkitResponse)
+def toolkit_explain_code(payload: ToolkitTextRequest):
+    return run_toolkit_call(explain_code, payload.text)
+
+
+# ---------- workflow engine ----------
+# Only "lecture-to-quiz" is wired up to actually run right now, since it's
+# the only workflow whose input (pasted notes) doesn't require a feature
+# we haven't built yet (audio transcription, video processing, PDF parsing).
+# The others still preview their pipeline on /workflows.
+
+@app.post("/workflows/lecture-to-quiz/run", response_model=WorkflowRunResponse)
+def run_lecture_to_quiz(payload: ToolkitTextRequest):
+    if not payload.text or not payload.text.strip():
+        raise HTTPException(status_code=400, detail="Notes text is required")
+
+    try:
+        summary = summarize_text(payload.text)
+        concepts = extract_key_concepts(payload.text)
+        flashcards = generate_flashcards(payload.text)
+        quiz = generate_quiz(payload.text)
+    except ToolkitUpstreamError as e:
+        raise HTTPException(status_code=e.status_code, detail=str(e))
+
+    return WorkflowRunResponse(
+        steps=[
+            WorkflowStepResult(title="Summary / Notes", output=summary),
+            WorkflowStepResult(title="Key Concepts", output=concepts),
+            WorkflowStepResult(title="Flashcards", output=flashcards),
+            WorkflowStepResult(title="20-Question Quiz", output=quiz),
+        ]
+    )
